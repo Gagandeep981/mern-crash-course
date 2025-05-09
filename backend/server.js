@@ -1,11 +1,11 @@
 // Import dependencies
 import dotenv from "dotenv";
-import multer from 'multer';
+import multer from "multer";
 import express from "express";
 import path from "path";
 import { connectDB } from "./config/db.js";
 import productRoutes from "./routes/product.route.js";
-import Product from "./models/product.model.js"; // Import your Product model
+import Product from "./models/product.model.js";
 
 // Configure environment variables
 dotenv.config();
@@ -18,41 +18,56 @@ const __dirname = path.resolve();
 connectDB();
 
 // Middlewares
-app.use(express.json()); // To accept JSON data
+app.use(express.json());
 
-// Configure multer storage
+// Serve the uploads folder statically
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Multer configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Folder where files will be stored
+    cb(null, "uploads/");
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // File name with timestamp
+    cb(null, Date.now() + path.extname(file.originalname));
   },
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png/;
+    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mime = allowed.test(file.mimetype);
+    if (ext && mime) return cb(null, true);
+    cb(new Error("Only .jpg, .jpeg, .png files are allowed"));
+  },
+});
 
-// Consolidated product creation route with image upload
-app.post("/api/products", upload.single("image"), async (req, res) => {
+// Product creation route with image upload
+app.post("/api/products/upload", upload.single("image"), async (req, res) => {
   try {
-    const { name, price } = req.body;
+    const { name, description, price, quantity } = req.body;
 
-    // Validate input
-    if (!name || !price || !req.file) {
+    if (!name || !description || !price || !quantity || !req.file) {
       return res.status(400).json({
-        message: "Please provide name, price, and an image."
+        success: false,
+        message: "Please provide name, price, and an image.",
       });
     }
 
-    
-    // Create a new product instance
+    // Construct public image path
+    const imagePath = `/uploads/${req.file.filename}`;
+
     const newProduct = new Product({
       name,
+      description,
       price,
-      image: `/uploads/${req.file.filename}`, // Save image path
+      quantity,
+      image: imagePath,
     });
 
-    // Save the product in the database
     await newProduct.save();
 
     res.status(201).json({
@@ -61,25 +76,23 @@ app.post("/api/products", upload.single("image"), async (req, res) => {
       product: newProduct,
     });
   } catch (error) {
-    console.error("Error creating product:", error.message);
-    res.status(500).json({ message: "Server error" });
+    console.error("Upload error:", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-app.use("/uploads", express.static("uploads")); // To serve uploaded images
-
-// Use external product routes (optional, if you have a dedicated routes file)
+// Use product routes
 app.use("/api/products", productRoutes);
 
-// Serve static files (for frontend)
-app.use(express.static(path.join(__dirname, "/frontend/dist")));
+// Serve frontend static files
+app.use(express.static(path.join(__dirname, "frontend", "dist")));
 
-// Fallback route for frontend
+// Fallback route for SPA
 app.get("*", (req, res) => {
   res.sendFile(path.resolve(__dirname, "frontend", "dist", "index.html"));
 });
 
-// Start the server
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server started at http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
 });

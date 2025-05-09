@@ -12,16 +12,18 @@ export const getProducts = async (req, res) => {
 };
 
 export const createProduct = async (req, res) => {
-   const { name, price } = req.body;
+   const { name, description, price, quantity } = req.body;
    const image = req.file?.filename;
 
-  if (!name || !price || !image) {
+  if (!name || !description || !price || !quantity || !image) {
     return res.status(400).json({ success: false, message: "Please provide name, price, and an image." });
   }
  
   const newProduct = new Product({
     name,
+    description,
     price,
+    quantity,
     image: `/uploads/${image}`,
   });
 
